@@ -31,6 +31,11 @@ type headersMsg struct {
 	peer    *peerpkg.Peer
 }
 
+type blockMsg struct {
+	block *wire.MsgBlock
+	peer  *peerpkg.Peer
+}
+
 // merkleBlockMsg packages a merkle block message and the peer it came from
 // together so the handler has access to that information.
 type merkleBlockMsg struct {
@@ -135,14 +140,18 @@ out:
 				ws.handleDonePeerMsg(msg.peer)
 			case headersMsg:
 				ws.handleHeadersMsg(&msg)
-			case merkleBlockMsg:
-				ws.handleMerkleBlockMsg(&msg)
+			/*case merkleBlockMsg:
+			ws.handleMerkleBlockMsg(&msg)*/
+
+			case blockMsg:
+				ws.handleBlockMsg(&msg) //parker
+
 			case invMsg:
 				ws.handleInvMsg(&msg)
-			case txMsg:
+			/*case txMsg:
 				ws.handleTxMsg(&msg)
 			case updateFiltersMsg:
-				ws.handleUpdateFiltersMsg()
+				ws.handleUpdateFiltersMsg()*/
 			default:
 				log.Warningf("Unknown message type sent to WireService message chan: %T", msg)
 			}
@@ -363,6 +372,20 @@ func (ws *WireService) handleHeadersMsg(hmsg *headersMsg) {
 				log.Errorf("Commit header error: %s", err.Error())
 			}
 			log.Infof("Received header %s at height %d", blockHeader.BlockHash().String(), height)
+			{
+				var invet = wire.InvVect{
+					Type: wire.InvTypeBlock,
+					Hash: blockHeader.BlockHash(),
+				}
+				gdmsg2 := wire.NewMsgGetData()
+				gdmsg2.AddInvVect(&invet)
+				peer.QueueMessage(gdmsg2, nil)
+				log.Infof("send wire.InvTypeBlock request %s || height is %d", blockHeader.BlockHash().String(), height)
+				err = ws.txStore.ScanBlocks().Put(int(height), blockHeader.BlockHash().String(), int(0)) // isFixScan 0:failure  1:successful
+				if err != nil {
+					log.Infof("ws.txStore.ScanBlocks().Put err is ", err)
+				}
+			}
 		} else {
 			log.Info("Switching to downloading merkle blocks")
 			locator := ws.chain.GetBlockLocator()
@@ -386,6 +409,44 @@ func (ws *WireService) handleHeadersMsg(hmsg *headersMsg) {
 		log.Warningf("Failed to send getheaders message to peer %s: %v", peer.Addr(), err)
 		return
 	}
+}
+
+func (ws *WireService) handleBlockMsg(bmsg *blockMsg) {
+	log.Warningf("parker handleBlockMsg method is enter！！！")
+	peer := bmsg.peer
+	_, exists := ws.peerStates[peer]
+	if !exists {
+		log.Warningf(" parker Received merkle block message from unknown peer %s", peer)
+		return
+	}
+
+	block := bmsg.block
+	header := block.Header
+	blockHash := header.BlockHash()
+	log.Warningf("parker block timestamp is %v ,|| header.BlockHash() is ==> %s ,previous hash is %s", header.Timestamp, blockHash, header.PrevBlock)
+
+	txs := block.Transactions
+	log.Warningf("parker  len(txs) is ==> %d ", len(txs))
+	var txeg = txs[0]
+	var version = txeg.Version
+	var txIn = txeg.TxIn
+	var txOut = txeg.TxOut
+	var lockTime = txeg.LockTime
+	log.Warningf("parker  &txeg.txHash is  ==> %s ", txeg.TxHash())
+	log.Warningf("parker  &txeg.TxIn is ==> %s ", len(txIn))
+	log.Warningf("parker  &txeg.TxOut is ==> %s ", len(txOut))
+	log.Warningf("parker  &txeg.Version is ==> %s ", version)
+	log.Warningf("parker  &txeg.LockTime is ==> %s ", lockTime)
+	for index, value := range txOut {
+		config := NewDefaultConfig()
+		config.Params = &chaincfg.MainNetParams
+		var spvWallet, err = NewSPVWallet(config)
+		log.Warningf("parker spvWallet err is ==> %s ", err)
+		var addr, _ = spvWallet.ScriptToAddress(value.PkScript)
+		log.Warningf("parker  index is %s, || addr is ==> %s ", index, addr)
+	}
+
+	// 原子事务 处理上述分析区块操作，完成后，修改数据库状态
 }
 
 // handleMerkleBlockMsg handles merkle block messages from all peers.  Merkle blocks are

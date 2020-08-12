@@ -17,6 +17,7 @@ type SQLiteDatastore struct {
 	stxos          wallet.Stxos
 	txns           wallet.Txns
 	watchedScripts wallet.WatchedScripts
+	scanBlocks     wallet.ScanBlocks
 	db             *sql.DB
 	lock           *sync.RWMutex
 }
@@ -50,6 +51,10 @@ func Create(repoPath string) (*SQLiteDatastore, error) {
 			db:   conn,
 			lock: l,
 		},
+		scanBlocks: &ScanBlocksDB{
+			db:   conn,
+			lock: l,
+		},
 		db:   conn,
 		lock: l,
 	}
@@ -72,6 +77,9 @@ func (db *SQLiteDatastore) Txns() wallet.Txns {
 func (db *SQLiteDatastore) WatchedScripts() wallet.WatchedScripts {
 	return db.watchedScripts
 }
+func (db *SQLiteDatastore) ScanBlocks() wallet.ScanBlocks {
+	return db.scanBlocks
+}
 
 func initDatabaseTables(db *sql.DB) error {
 	var sqlStmt string
@@ -81,6 +89,8 @@ func initDatabaseTables(db *sql.DB) error {
 	create table if not exists stxos (outpoint text primary key not null, value integer, height integer, scriptPubKey text, watchOnly integer, spendHeight integer, spendTxid text);
 	create table if not exists txns (txid text primary key not null, value integer, height integer, timestamp integer, watchOnly integer, tx blob);
 	create table if not exists watchedScripts (scriptPubKey text primary key not null);
+	create table if not exists scanBlocks (blockHeight integer primary key not null, blockHash text,isFixScan integer);
+	create table if not exists noticeTx (txHash text primary key not null, value text, wechatTxId text, isNotice integer);
 	create table if not exists config(key text primary key not null, value blob);
 	`
 	_, err := db.Exec(sqlStmt)

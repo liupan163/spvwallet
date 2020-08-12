@@ -90,6 +90,7 @@ type Datastore interface {
 	Txns() Txns
 	Keys() Keys
 	WatchedScripts() WatchedScripts
+	ScanBlocks() ScanBlocks
 }
 
 type Utxos interface {
@@ -171,7 +172,6 @@ type Keys interface {
 }
 
 type WatchedScripts interface {
-
 	// Add scripts to watch
 	PutAll(scriptPubkeys [][]byte) error
 
@@ -183,6 +183,16 @@ type WatchedScripts interface {
 
 	// Delete a watched script
 	Delete(scriptPubKey []byte) error
+}
+
+type ScanBlocks interface {
+	Put(blockHeight int, blockHash string, isFixScan int) error
+
+	Get(blockHeight int) (ScanBlock, error)
+
+	UpdateBlock(blockHeight int, blockHash string, isFixScan int) error
+
+	Delete(blockHeight int) error
 }
 
 type Utxo struct {
@@ -298,6 +308,12 @@ type Txn struct {
 	ToAddress   string
 
 	Outputs []TransactionOutput
+}
+
+type ScanBlock struct {
+	BlockHeight int
+	BlockHash   string
+	IsFixScan   int
 }
 
 type StatusCode string
