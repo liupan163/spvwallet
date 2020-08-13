@@ -1,10 +1,13 @@
 package spvwallet
 
 import (
+	"errors"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	peerpkg "github.com/btcsuite/btcd/peer"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
+	btc "github.com/btcsuite/btcutil"
 	"net"
 	"time"
 )
@@ -373,17 +376,25 @@ func (ws *WireService) handleHeadersMsg(hmsg *headersMsg) {
 			}
 			log.Infof("Received header %s at height %d", blockHeader.BlockHash().String(), height)
 			{
-				var invet = wire.InvVect{
-					Type: wire.InvTypeBlock,
-					Hash: blockHeader.BlockHash(),
-				}
-				gdmsg2 := wire.NewMsgGetData()
-				gdmsg2.AddInvVect(&invet)
-				peer.QueueMessage(gdmsg2, nil)
-				log.Infof("send wire.InvTypeBlock request %s || height is %d", blockHeader.BlockHash().String(), height)
-				err = ws.txStore.ScanBlocks().Put(int(height), blockHeader.BlockHash().String(), int(0)) // isFixScan 0:failure  1:successful
-				if err != nil {
-					log.Infof("ws.txStore.ScanBlocks().Put err is ", err)
+				if height > 640000 { //time:20200720  0000000000000000000b3021a283b981dd08f4ccf318b684b214f995d102af43开始
+					// todo 待研究  642397开始的：
+					// [handleInvMsg] [DEBUG] Requesting block 00000000000000000005147b6fdc4f62b73c9e04ac45e25970a199696c7e9bd3,
+					{
+						var invet = wire.InvVect{
+							Type: wire.InvTypeBlock,
+							Hash: blockHeader.BlockHash(),
+						}
+						gdmsg2 := wire.NewMsgGetData()
+						gdmsg2.AddInvVect(&invet)
+						peer.QueueMessage(gdmsg2, nil)
+						log.Infof("send wire.InvTypeBlock request %s || height is %d", blockHeader.BlockHash().String(), height)
+					}
+					{
+						err = ws.txStore.ScanBlocks().Put(int(height), blockHeader.BlockHash().String(), int(0)) // isFixScan 0:failure  1:successful
+						if err != nil {
+							log.Infof("ws.txStore.ScanBlocks().Put err is ", err)
+						}
+					}
 				}
 			}
 		} else {
@@ -432,21 +443,41 @@ func (ws *WireService) handleBlockMsg(bmsg *blockMsg) {
 	var txIn = txeg.TxIn
 	var txOut = txeg.TxOut
 	var lockTime = txeg.LockTime
-	log.Warningf("parker  &txeg.txHash is  ==> %s ", txeg.TxHash())
-	log.Warningf("parker  &txeg.TxIn is ==> %s ", len(txIn))
-	log.Warningf("parker  &txeg.TxOut is ==> %s ", len(txOut))
-	log.Warningf("parker  &txeg.Version is ==> %s ", version)
-	log.Warningf("parker  &txeg.LockTime is ==> %s ", lockTime)
+	log.Warningf("parker  &txeg.txHash is  ==> %v ", txeg.TxHash())
+	log.Warningf("parker  &txeg.TxIn is ==> %v ", len(txIn))
+	log.Warningf("parker  &txeg.TxOut is ==> %v ", len(txOut))
+	log.Warningf("parker  &txeg.Version is ==> %v ", version)
+	log.Warningf("parker  &txeg.LockTime is ==> %v ", lockTime)
 	for index, value := range txOut {
 		config := NewDefaultConfig()
 		config.Params = &chaincfg.MainNetParams
-		var spvWallet, err = NewSPVWallet(config)
-		log.Warningf("parker spvWallet err is ==> %s ", err)
-		var addr, _ = spvWallet.ScriptToAddress(value.PkScript)
-		log.Warningf("parker  index is %s, || addr is ==> %s ", index, addr)
+		log.Warningf("parker  index is %v, || value is ==> %v ", index, value)
+		var btcAddr, err = scryScriptToAddress(value.PkScript, &chaincfg.MainNetParams)
+		if err != nil {
+			log.Warningf("parker  analyse address failure  ", err)
+		} else {
+			log.Warningf("parker  btcAddr is =====> %v ", btcAddr)
+			if strings.ToLower(strings.Trim(btcAddr)) == strings.ToLower(strings.Trim("1Po1oWkD2LmodfkBYiAktwh76vkF93LKnh")) {
+				// parker todo 1、地址更改
+				// 2、 写入这笔交易到数据库，标识通知到小程序的状态为 未通知
+				{
+					
+				}
+			}
+		}
 	}
-
 	// 原子事务 处理上述分析区块操作，完成后，修改数据库状态
+}
+
+func scryScriptToAddress(script []byte, params *chaincfg.Params) (btc.Address, error) {
+	_, addrs, _, err := txscript.ExtractPkScriptAddrs(script, params)
+	if err != nil {
+		return &btc.AddressPubKeyHash{}, err
+	}
+	if len(addrs) == 0 {
+		return &btc.AddressPubKeyHash{}, errors.New("unknown script")
+	}
+	return addrs[0], nil
 }
 
 // handleMerkleBlockMsg handles merkle block messages from all peers.  Merkle blocks are

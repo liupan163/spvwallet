@@ -42,9 +42,6 @@ func (sbdb *ScanBlocksDB) Put(blockHeight int, blockHash string, isFixScan int) 
 	if err != nil {
 		return err
 	}
-	fmt.Println("ScanBlocksDB) Put blockHeight is ", blockHeight)
-	fmt.Println("ScanBlocksDB) Put blockHash is ", blockHash)
-	fmt.Println("ScanBlocksDB) Put isFixScan is ", isFixScan)
 
 	stmt, err := tx.Prepare("insert or replace into scanBlocks(blockHeight, blockHash, isFixScan) values(?,?,?)")
 	defer stmt.Close()

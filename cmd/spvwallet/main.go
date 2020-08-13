@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	"github.com/OpenBazaar/spvwallet"
 	"github.com/OpenBazaar/spvwallet/api"
 	"github.com/OpenBazaar/spvwallet/cli"
@@ -16,7 +15,9 @@ import (
 	"github.com/asticode/go-astilog"
 	"github.com/atotto/clipboard"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcutil"
+	btc "github.com/btcsuite/btcutil"
 	"github.com/fatih/color"
 	"github.com/jessevdk/go-flags"
 	"github.com/natefinch/lumberjack"
@@ -86,6 +87,17 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func scriptToAddress(script []byte, params *chaincfg.Params) (btc.Address, error) {
+	_, addrs, _, err := txscript.ExtractPkScriptAddrs(script, params)
+	if err != nil {
+		return &btc.AddressPubKeyHash{}, err
+	}
+	if len(addrs) == 0 {
+		return &btc.AddressPubKeyHash{}, errors.New("unknown script")
+	}
+	return addrs[0], nil
 }
 
 func (x *Version) Execute(args []string) error {
