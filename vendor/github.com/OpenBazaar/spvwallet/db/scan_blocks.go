@@ -12,18 +12,18 @@ type ScanBlocksDB struct {
 	lock *sync.RWMutex
 }
 
-func (sbdb *ScanBlocksDB) Get(blockHeight int) (wallet.ScanBlock, error) {
+func (sbdb *ScanBlocksDB) Get(blockHash string) (wallet.ScanBlock, error) {
 	sbdb.lock.RLock()
 	defer sbdb.lock.RUnlock()
 	var sbs wallet.ScanBlock
-	stmt, err := sbdb.db.Prepare("select * from scanBlocks where blockHeight=?")
+	stmt, err := sbdb.db.Prepare("select * from scanBlocks where blockHash=?")
 	if err != nil {
 		return sbs, err
 	}
 	defer stmt.Close()
-	var blockHash string
 	var isFixScan int
-	err = stmt.QueryRow(blockHeight).Scan(&blockHash, &isFixScan)
+	var blockHeight int
+	err = stmt.QueryRow(blockHash).Scan(&blockHeight, &isFixScan)
 	if err != nil {
 		return sbs, err
 	}
@@ -35,22 +35,21 @@ func (sbdb *ScanBlocksDB) Get(blockHeight int) (wallet.ScanBlock, error) {
 	return sbs, nil
 }
 
-func (sbdb *ScanBlocksDB) Put(blockHeight int, blockHash string, isFixScan int) error {
+func (sbdb *ScanBlocksDB) Put(blockHash string, blockHeight int, isFixScan int) error {
 	sbdb.lock.Lock()
 	defer sbdb.lock.Unlock()
 	tx, err := sbdb.db.Begin()
 	if err != nil {
 		return err
 	}
-
-	stmt, err := tx.Prepare("insert or replace into scanBlocks(blockHeight, blockHash, isFixScan) values(?,?,?)")
+	stmt, err := tx.Prepare("insert or replace into scanBlocks(blockHash, blockHeight, isFixScan) values(?,?,?)")
 	defer stmt.Close()
 	if err != nil {
 		tx.Rollback()
-		fmt.Println("err is ",err)
+		fmt.Println("err is ", err)
 		return err
 	}
-	_, err = stmt.Exec(blockHeight, blockHash, isFixScan)
+	_, err = stmt.Exec(blockHash, blockHeight, isFixScan)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -59,19 +58,19 @@ func (sbdb *ScanBlocksDB) Put(blockHeight int, blockHash string, isFixScan int) 
 	return nil
 }
 
-func (sbdb *ScanBlocksDB) UpdateBlock(blockHeight int, blockHash string, isFixScan int) error {
+func (sbdb *ScanBlocksDB) UpdateBlock(blockHash string, isFixScan int) error {
 	sbdb.lock.Lock()
 	defer sbdb.lock.Unlock()
 	tx, err := sbdb.db.Begin()
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare("update scanBlocks set blockHash=?, isFixScan=? where blockHeight=?")
+	stmt, err := tx.Prepare("update scanBlocks set isFixScan=? where blockHash=?")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
-	_, err = stmt.Exec(blockHeight, int(isFixScan), blockHeight)
+	_, err = stmt.Exec(int(isFixScan), blockHash)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -80,10 +79,10 @@ func (sbdb *ScanBlocksDB) UpdateBlock(blockHeight int, blockHash string, isFixSc
 	return nil
 }
 
-func (sbdb *ScanBlocksDB) Delete(blockHeight int) error {
+func (sbdb *ScanBlocksDB) Delete(blockHash string) error {
 	sbdb.lock.Lock()
 	defer sbdb.lock.Unlock()
-	_, err := sbdb.db.Exec("delete from scanBlocks where blockHeight=?", blockHeight)
+	_, err := sbdb.db.Exec("delete from scanBlocks where blockHash=?", blockHash)
 	if err != nil {
 		return err
 	}

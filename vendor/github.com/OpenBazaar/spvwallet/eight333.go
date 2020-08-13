@@ -9,6 +9,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	btc "github.com/btcsuite/btcutil"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -390,7 +391,7 @@ func (ws *WireService) handleHeadersMsg(hmsg *headersMsg) {
 						log.Infof("send wire.InvTypeBlock request %s || height is %d", blockHeader.BlockHash().String(), height)
 					}
 					{
-						err = ws.txStore.ScanBlocks().Put(int(height), blockHeader.BlockHash().String(), int(0)) // isFixScan 0:failure  1:successful
+						err = ws.txStore.ScanBlocks().Put(blockHeader.BlockHash().String(), int(height), int(0)) // isFixScan 0:failure  1:successful
 						if err != nil {
 							log.Infof("ws.txStore.ScanBlocks().Put err is ", err)
 						}
@@ -430,43 +431,60 @@ func (ws *WireService) handleBlockMsg(bmsg *blockMsg) {
 		log.Warningf(" parker Received merkle block message from unknown peer %s", peer)
 		return
 	}
-
-	block := bmsg.block
-	header := block.Header
-	blockHash := header.BlockHash()
-	log.Warningf("parker block timestamp is %v ,|| header.BlockHash() is ==> %s ,previous hash is %s", header.Timestamp, blockHash, header.PrevBlock)
-
-	txs := block.Transactions
-	log.Warningf("parker  len(txs) is ==> %d ", len(txs))
-	var txeg = txs[0]
-	var version = txeg.Version
-	var txIn = txeg.TxIn
-	var txOut = txeg.TxOut
-	var lockTime = txeg.LockTime
-	log.Warningf("parker  &txeg.txHash is  ==> %v ", txeg.TxHash())
-	log.Warningf("parker  &txeg.TxIn is ==> %v ", len(txIn))
-	log.Warningf("parker  &txeg.TxOut is ==> %v ", len(txOut))
-	log.Warningf("parker  &txeg.Version is ==> %v ", version)
-	log.Warningf("parker  &txeg.LockTime is ==> %v ", lockTime)
-	for index, value := range txOut {
-		config := NewDefaultConfig()
-		config.Params = &chaincfg.MainNetParams
-		log.Warningf("parker  index is %v, || value is ==> %v ", index, value)
-		var btcAddr, err = scryScriptToAddress(value.PkScript, &chaincfg.MainNetParams)
-		if err != nil {
-			log.Warningf("parker  analyse address failure  ", err)
-		} else {
-			log.Warningf("parker  btcAddr is =====> %v ", btcAddr)
-			if strings.ToLower(strings.Trim(btcAddr)) == strings.ToLower(strings.Trim("1Po1oWkD2LmodfkBYiAktwh76vkF93LKnh")) {
-				// parker todo 1、地址更改
-				// 2、 写入这笔交易到数据库，标识通知到小程序的状态为 未通知
-				{
-					
+	go func() {
+		block := bmsg.block
+		header := block.Header
+		blockHash := header.BlockHash()
+		log.Warningf("parker block timestamp is %v ,|| header.BlockHash() is ==> %s ,previous hash is %s", header.Timestamp, blockHash, header.PrevBlock)
+		txs := block.Transactions
+		log.Warningf("parker  len(txs) is ==> %d ", len(txs))
+		// 原子事务 处理上述分析区块操作，完成后，修改数据库状态
+		var isSuccessAnalyseAllBlock = true
+		{
+		AnalyseTxsLabel:
+			for index, value := range txs {
+				var txeg = value
+				//var version = txeg.Version
+				var txIn = txeg.TxIn
+				var txOut = txeg.TxOut
+				//var lockTime = txeg.LockTime
+				log.Warningf("parker  txs.index is ==> %v ,txeg.txHash is  ==> %v || len(txIn) is ==> %v || len(txOut) is ===>",
+					index, txeg.TxHash(), len(txIn), len(txOut))
+				for index, value := range txOut {
+					config := NewDefaultConfig()
+					config.Params = &chaincfg.MainNetParams
+					log.Warningf("parker txOut.index is %v, || value is ==> %v ", index, value)
+					var btcAddr, err = scryScriptToAddress(value.PkScript, &chaincfg.MainNetParams)
+					if err != nil {
+						log.Warningf("parker  analyse address failure  ", err)
+					} else {
+						log.Warningf("parker  btcAddr is =====> %v ", btcAddr)
+						if strings.ToLower(strings.Trim(btcAddr.String(), "")) == strings.ToLower(strings.Trim("1Po1oWkD2LmodfkBYiAktwh76vkF93LKnh", "")) {
+							// parker todo 1、地址更改
+							// 2、 写入这笔交易到数据库，标识通知到小程序的状态为 未通知
+							log.Infof("appear equal txeg.TxHash()===> ", txeg.TxHash().String())
+							log.Infof("appear equal address===> ", btcAddr.String())
+							log.Infof("appear equal value.Value===> ", value.Value)
+							err = ws.txStore.NoticeTxs().Put(txeg.TxHash().String(), int(value.Value), "mock wechatTxId", 0) // isNotice 0:failure , 1:successful
+							if err != nil {
+								log.Infof("ws.txStore.ScanBlocks().Put err is =>", err)
+								isSuccessAnalyseAllBlock = false
+								break AnalyseTxsLabel
+							}
+						}
+					}
 				}
+				log.Warningf("parker the end of for each txOut-----%v", index)
+			}
+			log.Warningf("parker the end of for Block transactions -----%v", blockHash)
+		}
+		if (isSuccessAnalyseAllBlock) {
+			var err = ws.txStore.ScanBlocks().UpdateBlock(blockHash.String(), int(1)) // isFixScan 0:failure  1:successful
+			if err != nil {
+				log.Infof("ws.txStore.ScanBlocks().Put err is ", err)
 			}
 		}
-	}
-	// 原子事务 处理上述分析区块操作，完成后，修改数据库状态
+	}()
 }
 
 func scryScriptToAddress(script []byte, params *chaincfg.Params) (btc.Address, error) {

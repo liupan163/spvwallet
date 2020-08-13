@@ -91,6 +91,7 @@ type Datastore interface {
 	Keys() Keys
 	WatchedScripts() WatchedScripts
 	ScanBlocks() ScanBlocks
+	NoticeTxs() NoticeTxs
 }
 
 type Utxos interface {
@@ -186,13 +187,23 @@ type WatchedScripts interface {
 }
 
 type ScanBlocks interface {
-	Put(blockHeight int, blockHash string, isFixScan int) error
+	Put(blockHash string, blockHeight int, isFixScan int) error
 
-	Get(blockHeight int) (ScanBlock, error)
+	Get(blockHash string) (ScanBlock, error)
 
-	UpdateBlock(blockHeight int, blockHash string, isFixScan int) error
+	UpdateBlock(blockHash string, isFixScan int) error
 
-	Delete(blockHeight int) error
+	Delete(blockHash string) error
+}
+
+type NoticeTxs interface {
+	Put(txHash string, value int, wechatTxId string, isNotice int) error
+
+	Get(txHash string) (NoticeTx, error)
+
+	UpdateBlock(txHash string, value int, wechatTxId string, isNotice int) error
+
+	Delete(txHash string) error
 }
 
 type Utxo struct {
@@ -311,11 +322,17 @@ type Txn struct {
 }
 
 type ScanBlock struct {
-	BlockHeight int
 	BlockHash   string
+	BlockHeight int
 	IsFixScan   int
 }
 
+type NoticeTx struct {
+	TxHash     string
+	Value      int
+	WechatTxId string
+	IsNotice   int
+}
 type StatusCode string
 
 const (
