@@ -19,6 +19,7 @@ type SQLiteDatastore struct {
 	watchedScripts wallet.WatchedScripts
 	scanBlocks     wallet.ScanBlocks
 	noticeTxs      wallet.NoticeTxs
+	scryConfigs    wallet.ScryConfigs
 	db             *sql.DB
 	lock           *sync.RWMutex
 }
@@ -88,6 +89,9 @@ func (db *SQLiteDatastore) ScanBlocks() wallet.ScanBlocks {
 func (db *SQLiteDatastore) NoticeTxs() wallet.NoticeTxs {
 	return db.noticeTxs
 }
+func (db *SQLiteDatastore) ScryConfigs() wallet.ScryConfigs {
+	return db.scryConfigs
+}
 
 func initDatabaseTables(db *sql.DB) error {
 	var sqlStmt string
@@ -99,6 +103,7 @@ func initDatabaseTables(db *sql.DB) error {
 	create table if not exists watchedScripts (scriptPubKey text primary key not null);
 	create table if not exists scanBlocks (blockHash text primary key not null, blockHeight integer,isFixScan integer);
 	create table if not exists noticeTx (txHash text primary key not null, value integer, wechatTxId text, isNotice integer);
+	create table if not exists scryConfigs(scryKey text primary key not null, scryValue text);
 	create table if not exists config(key text primary key not null, value blob);
 	`
 	_, err := db.Exec(sqlStmt)

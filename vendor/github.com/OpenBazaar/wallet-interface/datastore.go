@@ -92,6 +92,7 @@ type Datastore interface {
 	WatchedScripts() WatchedScripts
 	ScanBlocks() ScanBlocks
 	NoticeTxs() NoticeTxs
+	ScryConfigs() ScryConfigs
 }
 
 type Utxos interface {
@@ -194,6 +195,17 @@ type ScanBlocks interface {
 	UpdateBlock(blockHash string, isFixScan int) error
 
 	Delete(blockHash string) error
+
+	GetLatestUnScanBlockHash() (string, error)
+}
+
+type ScryConfigs interface {
+	Put(scryKey string, scryValue string) error
+
+	Get(scryKey string) (NoticeTx, error)
+
+	UpdateBlock(scryKey string, scryValue string) error
+	Delete(scryKey string) error
 }
 
 type NoticeTxs interface {
@@ -325,6 +337,11 @@ type ScanBlock struct {
 	BlockHash   string
 	BlockHeight int
 	IsFixScan   int
+}
+
+type ScryConfig struct {
+	ScryKey   string
+	ScryValue string
 }
 
 type NoticeTx struct {

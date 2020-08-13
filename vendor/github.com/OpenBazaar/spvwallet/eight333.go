@@ -14,9 +14,14 @@ import (
 )
 
 const (
-	maxRequestedTxns  = wire.MaxInvPerMsg
-	maxFalsePositives = 7
+	maxRequestedTxns   = wire.MaxInvPerMsg
+	maxFalsePositives  = 7
+	scryStartBlock     = 640000           // 从 640000开始发通知，请求块
+	scryCurrentScanKey = "scryBlockIndex" //记录扫描到的当前区块下边index
 )
+
+var lastTimeRequestBlock = time.Now()
+var headerMsgPeer *peerpkg.Peer
 
 // newPeerMsg signifies a newly connected peer to the block handler.
 type newPeerMsg struct {
@@ -150,8 +155,9 @@ out:
 			case blockMsg:
 				ws.handleBlockMsg(&msg) //parker
 
-			case invMsg:
-				ws.handleInvMsg(&msg)
+			/*case invMsg:
+			ws.handleInvMsg(&msg)*/
+
 			/*case txMsg:
 				ws.handleTxMsg(&msg)
 			case updateFiltersMsg:
@@ -163,8 +169,33 @@ out:
 			break out
 		}
 	}
+	//todo 加入定时监听
+	/*var intervalTimer *time.Timer
+	var requestBlockFunc = func() {
+		if time.Now().After(lastTimeRequestBlock.Add(time.Minute)) {
+			// 发起一次请求peer
+			log.Warningf("remember to interval to do something===>", lastTimeRequestBlock)
+			/*{
+				var blockHash, err = getNowblockHashFromDB(ws)
+				var invet = wire.InvVect{
+					Type: wire.InvTypeBlock,
+					Hash: blockHeader.BlockHash(),
+				}
+				gdmsg2 := wire.NewMsgGetData()
+				gdmsg2.AddInvVect(&invet)
+				headerMsgPeer.QueueMessage(gdmsg2, nil)
+				log.Infof("send wire.InvTypeBlock request %s || height is %d", blockHeader.BlockHash().String(), height)
+			}*/
+		}
+	}
+	intervalTimer = time.AfterFunc(time.Minute, requestBlockFunc)
+	defer intervalTimer.Stop()*/
 }
-
+func getNowblockHashFromDB(ws *WireService) (*chainhash.Hash, error) {
+	ws.txStore.ScanBlocks().GetLatestUnScanBlockHash()
+	var blockHashDb = ""
+	return chainhash.NewHashFromStr(blockHashDb)
+}
 func (ws *WireService) Stop() {
 	ws.syncPeer = nil
 	close(ws.quit)
@@ -356,6 +387,9 @@ func (ws *WireService) handleHeadersMsg(hmsg *headersMsg) {
 		return
 	}
 
+	//update the headerMsgPeer
+	headerMsgPeer = peer
+
 	msg := hmsg.headers
 	numHeaders := len(msg.Headers)
 
@@ -377,7 +411,7 @@ func (ws *WireService) handleHeadersMsg(hmsg *headersMsg) {
 			}
 			log.Infof("Received header %s at height %d", blockHeader.BlockHash().String(), height)
 			{
-				if height > 640000 { //time:20200720  0000000000000000000b3021a283b981dd08f4ccf318b684b214f995d102af43开始
+				if height > scryStartBlock { //time:20200720  0000000000000000000b3021a283b981dd08f4ccf318b684b214f995d102af43开始
 					// todo 待研究  642397开始的：
 					// [handleInvMsg] [DEBUG] Requesting block 00000000000000000005147b6fdc4f62b73c9e04ac45e25970a199696c7e9bd3,
 					{
@@ -431,6 +465,10 @@ func (ws *WireService) handleBlockMsg(bmsg *blockMsg) {
 		log.Warningf(" parker Received merkle block message from unknown peer %s", peer)
 		return
 	}
+
+	//update lastTimeRequestBlock
+	lastTimeRequestBlock = time.Now()
+
 	go func() {
 		block := bmsg.block
 		header := block.Header
@@ -474,15 +512,18 @@ func (ws *WireService) handleBlockMsg(bmsg *blockMsg) {
 						}
 					}
 				}
-				log.Warningf("parker the end of for each txOut-----%v", index)
+				log.Warningf("parker the end of for each txOut index is -----%v", index)
 			}
-			log.Warningf("parker the end of for Block transactions -----%v", blockHash)
+			log.Warningf("parker the end of for Block  blockHahs is -----%v", blockHash)
 		}
 		if (isSuccessAnalyseAllBlock) {
 			var err = ws.txStore.ScanBlocks().UpdateBlock(blockHash.String(), int(1)) // isFixScan 0:failure  1:successful
 			if err != nil {
 				log.Infof("ws.txStore.ScanBlocks().Put err is ", err)
 			}
+			// todo 记录 块下标
+			// ws.txStore.ScryConfigs().UpdateBlock(scryCurrentScanKey, blockHash.String()) 记录下标，
+			// 目前来看没意思，对面peer，回复信息为无序，记录index，可能会有跳过块的问题
 		}
 	}()
 }
