@@ -51,7 +51,7 @@ func main() {
 		w := &lumberjack.Logger{
 			Filename:   path.Join(config.RepoPath, "logs", "bitcoin.log"),
 			MaxSize:    10, // Megabytes
-			MaxBackups: 3,
+			MaxBackups: 300,
 			MaxAge:     30, // Days
 		}
 		bitcoinFile := logging.NewLogBackend(w, "", 0)

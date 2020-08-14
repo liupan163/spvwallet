@@ -93,12 +93,12 @@ func (sbdb *ScanBlocksDB) GetLatestUnScanBlockHash() (string, error) {
 	sbdb.lock.RLock()
 	defer sbdb.lock.RUnlock()
 	var blockHash string
-	stmt, err := sbdb.db.Prepare("select * from scanBlocks where isFixScan=? limit 0,1")
+	stmt, err := sbdb.db.Prepare("select scanBlocks.blockHash from scanBlocks where isFixScan=? limit 0,1")
 	if err != nil {
 		return blockHash, err
 	}
 	defer stmt.Close()
-	err = stmt.QueryRow(1).Scan(&blockHash)
+	err = stmt.QueryRow(0).Scan(&blockHash)
 	if err != nil {
 		return blockHash, err
 	}
