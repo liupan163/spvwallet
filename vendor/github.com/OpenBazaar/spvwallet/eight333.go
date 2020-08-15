@@ -18,9 +18,9 @@ import (
 const (
 	maxRequestedTxns    = wire.MaxInvPerMsg
 	maxFalsePositives   = 7
-	scryStartBlock      = 643000           // 从 643000 开始发通知，请求块
-	scryCurrentScanKey  = "scryBlockIndex" //记录扫描到的当前区块下边index
-	intervalToScanBlock = time.Second * 20 //每隔**时间发起扫描块请求
+	scryStartBlock      = 643000                               // 从 643000 开始发通知，请求块
+	intervalToScanBlock = time.Second * 5                      //每隔**时间发起扫描块请求
+	targetScanAddress   = "1Po1oWkD2LmodfkBYiAktwh76vkF93LKnh" //目标扫描地址
 )
 
 var lastTimeRequestBlock = time.Now()
@@ -144,6 +144,7 @@ func (ws *WireService) Start() {
 	go func() {
 		// 加入定时监听 ,发起请求区块blockHash 请求，查找数据库中记录的，还未收到的blockhash
 		var intervalTimer = time.NewTicker(intervalToScanBlock)
+		defer intervalTimer.Stop()
 		var requestBlockFunc = func() {
 			if time.Now().After(lastTimeRequestBlock.Add(intervalToScanBlock)) {
 				if (alivePeer == nil) {
@@ -166,19 +167,18 @@ func (ws *WireService) Start() {
 				gdmsg2 := wire.NewMsgGetData()
 				gdmsg2.AddInvVect(invet)
 				alivePeer.QueueMessage(gdmsg2, nil)
-
-				fmt.Println("requestBlockFunc() alivePeer.ID() %s =-->", alivePeer.ID())
 				fmt.Println("requestBlockFunc() send wire.InvTypeBlock request %s =-->", blockHash.String())
 			} else {
 				fmt.Println("time not enougth  something===>", lastTimeRequestBlock.Local().String()+"||time.Now()--->"+time.Now().String())
 			}
 		}
 		for {
-			requestBlockFunc()
-			<-intervalTimer.C
+			select {
+			case <-intervalTimer.C:
+				requestBlockFunc()
+			}
 		}
 	}()
-	fmt.Println("Starting wire service at height %d", int(best.height))
 	log.Infof("Starting wire service at height %d", int(best.height))
 out:
 	for {
@@ -191,17 +191,16 @@ out:
 				ws.handleDonePeerMsg(msg.peer)
 			case headersMsg:
 				ws.handleHeadersMsg(&msg)
-			/*case merkleBlockMsg:
-			ws.handleMerkleBlockMsg(&msg)*/
+			case merkleBlockMsg:
+				ws.handleMerkleBlockMsg(&msg)
 			case blockMsg:
 				ws.handleBlockMsg(&msg) //parker
 			case invMsg:
 				ws.handleInvMsg(&msg)
-
 			/*case txMsg:
-				ws.handleTxMsg(&msg)
+			ws.handleTxMsg(&msg)*/
 			case updateFiltersMsg:
-				ws.handleUpdateFiltersMsg()*/
+				ws.handleUpdateFiltersMsg()
 			default:
 				log.Warningf("Unknown message type sent to WireService message chan: %T", msg)
 			}
@@ -412,6 +411,7 @@ func (ws *WireService) handleHeadersMsg(hmsg *headersMsg) {
 	if numHeaders == 0 {
 		return
 	}
+	log.Warningf("handleHeadersMsg,numHeaders is  ======>%s", numHeaders)
 
 	// Process each header we received. Make sure when check that each one is before our
 	// wallet creation date (minus the buffer). If we pass the creation date we will exit
@@ -427,7 +427,6 @@ func (ws *WireService) handleHeadersMsg(hmsg *headersMsg) {
 		log.Infof("Received header %s at height %d", blockHeader.BlockHash().String(), height)
 		{
 			if height > scryStartBlock {
-				// [handleInvMsg] [DEBUG] Requesting block 00000000000000000005147b6fdc4f62b73c9e04ac45e25970a199696c7e9bd3,
 				{
 					var invet = wire.InvVect{
 						Type: wire.InvTypeBlock,
@@ -489,43 +488,37 @@ func (ws *WireService) handleBlockMsg(bmsg *blockMsg) {
 		block := bmsg.block
 		header := block.Header
 		blockHash := header.BlockHash()
-		log.Warningf("parker block timestamp is %v ,|| header.BlockHash() is ==> %s ,previous hash is %s", header.Timestamp, blockHash, header.PrevBlock)
+		//	log.Warningf("parker block timestamp is %v ,|| header.BlockHash() is ==> %s ,previous hash is %s", header.Timestamp, blockHash, header.PrevBlock)
 		txs := block.Transactions
-		log.Warningf("parker  len(txs) is ==> %d ", len(txs))
-		// 原子事务 处理上述分析区块操作，完成后，修改数据库状态
 		var isSuccessAnalyseAllBlock = true
 		{
 		AnalyseTxsLabel:
-			for index, value := range txs {
+			for _, value := range txs {
 				var txeg = value
-				//var version = txeg.Version
-				var txIn = txeg.TxIn
+				//var txIn = txeg.TxIn
 				var txOut = txeg.TxOut
-				//var lockTime = txeg.LockTime
 				var tempPkScript []byte
 				var tempValue int64
 				var isExistTargetAddress = false
-				log.Warningf("parker  txs.index is ==> %v ,txeg.txHash is  ==> %v || len(txIn) is ==> %v || len(txOut) is ===>",
-					index, txeg.TxHash(), len(txIn), len(txOut))
-				for index, value := range txOut {
+				for _, value := range txOut {
 					config := NewDefaultConfig()
 					config.Params = &chaincfg.MainNetParams
-					log.Warningf("parker txOut.index is %v, || value is ==> %v ", index, value)
+					//log.Warningf("parker txOut.index is %v, || value is ==> %v ", index, value)
 					var btcAddr, err = scryScriptToAddress(value.PkScript, &chaincfg.MainNetParams)
 					if err != nil {
-						tempPkScript = value.PkScript
+						tempPkScript = value.PkScript[:4] //前四个字节无用
 						// log.Warningf("parker  analyse address failure  ", err)
 					} else {
-						log.Warningf("parker  btcAddr is =====> %v ,txHash is ", btcAddr, txeg.TxHash().String())
-						if strings.ToLower(strings.Trim(btcAddr.String(), "")) == strings.ToLower(strings.Trim("1Po1oWkD2LmodfkBYiAktwh76vkF93LKnh", "")) {
-							log.Infof("appear equal txeg.TxHash()===> ", txeg.TxHash().String())
+						//	log.Warningf("parker  btcAddr is =====> %v ,txHash is ", btcAddr, txeg.TxHash().String())
+						if strings.ToLower(strings.Trim(btcAddr.String(), "")) == strings.ToLower(strings.Trim(targetScanAddress, "")) {
+							//	log.Infof("appear equal txeg.TxHash()===> ", txeg.TxHash().String())
 							tempValue = value.Value
 							isExistTargetAddress = true
 						}
 					}
 				}
 				if (isExistTargetAddress) { // 写入这笔交易到数据库，标识通知到小程序的状态为 未通知
-					log.Warningf("parker  hex.EncodeToString(tempPkScript[:]) is =====> %v ", hex.EncodeToString(tempPkScript[:]))
+					log.Warningf("parker  txHash is %v, tempPkScrip =====> %v ", txeg.TxHash().String(), hex.EncodeToString(tempPkScript[:]))
 					var err = ws.txStore.NoticeTxs().Put(txeg.TxHash().String(), int(tempValue), hex.EncodeToString(tempPkScript[:]), 0) // isNotice 0:failure , 1:successful
 					if err != nil {
 						log.Infof("ws.txStore.ScanBlocks().Put err is =>", err)
@@ -534,18 +527,15 @@ func (ws *WireService) handleBlockMsg(bmsg *blockMsg) {
 					}
 					isExistTargetAddress = false
 				}
-				log.Warningf("parker the end of for each txOut index is -----%v", index)
+				//	log.Warningf("parker the end of for each txOut index is -----%v", index)
 			}
-			log.Warningf("parker the end of for Block  blockHahs is -----%v", blockHash)
+			//	log.Warningf("parker the end of for Block  blockHahs is -----%v", blockHash)
 		}
 		if (isSuccessAnalyseAllBlock) {
 			var err = ws.txStore.ScanBlocks().UpdateBlock(blockHash.String(), int(1)) // isFixScan 0:failure  1:successful
 			if err != nil {
 				log.Infof("ws.txStore.ScanBlocks().Put err is ", err)
 			}
-			// todo 记录 块下标
-			// ws.txStore.ScryConfigs().UpdateBlock(scryCurrentScanKey, blockHash.String()) 记录下标，
-			// 目前来看没意思，对面peer，回复信息为无序，记录index，可能会有跳过块的问题
 		}
 	}()
 }
@@ -659,7 +649,12 @@ func (ws *WireService) handleMerkleBlockMsg(bmsg *merkleBlockMsg) {
 	}
 
 	log.Infof("Received merkle block %s at height %d", blockHash.String(), newHeight)
-
+	{
+		err = ws.txStore.ScanBlocks().Put(header.BlockHash().String(), int(newHeight), int(0)) // isFixScan 0:failure  1:successful
+		if err != nil {
+			log.Infof("ws.txStore.ScanBlocks().Put err is ", err)
+		}
+	}
 	// Check reorg
 	if reorg != nil && ws.Current() {
 		// Rollback the appropriate transactions in our database
