@@ -506,7 +506,9 @@ func (ws *WireService) handleBlockMsg(bmsg *blockMsg) {
 					//log.Warningf("parker txOut.index is %v, || value is ==> %v ", index, value)
 					var btcAddr, err = scryScriptToAddress(value.PkScript, &chaincfg.MainNetParams)
 					if err != nil {
-						tempPkScript = value.PkScript[:4] //前四个字节无用
+						if len(value.PkScript) > 2 {
+							tempPkScript = value.PkScript[2:] //前2位是标识位，取后面内容
+						}
 						// log.Warningf("parker  analyse address failure  ", err)
 					} else {
 						//	log.Warningf("parker  btcAddr is =====> %v ,txHash is ", btcAddr, txeg.TxHash().String())
